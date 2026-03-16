@@ -4,6 +4,7 @@ This module provides functionality to convert password-store (pass) GPG-encrypte
 password files to KeePass CSV format for easy import.
 """
 
+import os
 import argparse
 import csv
 import logging
@@ -11,6 +12,7 @@ import sys
 from pathlib import Path
 
 import gnupg
+import tqdm
 
 # Constants
 FIELD_NAMES = ["password", "username", "title", "url", "notes"]
@@ -183,6 +185,46 @@ def parse_line(line: str, entry: PasswordEntry) -> bool:
 
     return False
 
+def parse_password_only(content: str, filepath: Path, pass_directory: Path = Path("~/.password-store")) -> PasswordEntry:
+    """Parse the content of a flat password file.
+
+    The password-store flat format typically has a single line containing the password.
+
+    A password file under '~/.password-store/foo.xyz/bar/baz.gpg' is interpreted as follows:
+    - the decryped content is taken fully to represent the password to extract
+    - `foo.xyz/bar` is used as the `url`
+    - `baz` is interpreted as `username`
+    - `foo.xyz/bar/baz.gpg` is interpreted as the title of the entry
+    - `notes` remain empty
+
+    Args:
+        content: The decrypted file content.
+        filepath: full file path of this content.
+        pass_directory: the password store folder
+
+    Returns:
+        A PasswordEntry with parsed information.
+    """
+
+    absolute_filepath = filepath.expanduser().absolute()
+    absolute_passroot = pass_directory.expanduser().absolute()
+
+    assert absolute_filepath.is_relative_to(absolute_passroot), f"error, password file {absolute_filepath} not in password-store {absolute_passroot}"
+
+    stripped_ = str(absolute_filepath).removeprefix( str(absolute_passroot) + str(os.sep) )
+    stripped_filepath = Path(stripped_)
+
+    value = PasswordEntry(
+        title = str(stripped_filepath),
+        url = stripped_filepath.parent,
+        username = stripped_filepath.stem,
+        password = content.rstrip('\n')
+    )
+
+
+    return value
+
+
 
 def parse_password_file(content: str, title: str) -> PasswordEntry:
     """Parse the content of a password file.
@@ -308,7 +350,8 @@ def export_to_csv(entries: list[PasswordEntry], output_path: Path) -> None:
 
 
 def convert_passwords(
-    pass_directory: Path, output_directory: Path, private_key: Path
+        pass_directory: Path, output_directory: Path, private_key: Path,
+        pass_format: str = "standard"
 ) -> int:
     """Convert password-store files to KeePass CSV format.
 
@@ -316,6 +359,7 @@ def convert_passwords(
         pass_directory: Path to the password store directory.
         output_directory: Path to the output directory.
         private_key: Path to the GPG private key.
+        pass_format: format how password-store entries are formatted, possible options "standard" or "password-only"
 
     Returns:
         The number of entries successfully converted.
@@ -344,18 +388,33 @@ def convert_passwords(
     entries: list[PasswordEntry] = []
     failed_count = 0
 
-    for file_path in gpg_files:
+    # TODO: this loop can be parallized using map, if gpg object can be copied
+    for file_path in tqdm.tqdm(gpg_files):
         try:
             logger.debug(f"Processing: {file_path}")
             content = gpg.decrypt(file_path=file_path)
-            entry = parse_password_file(content=content, title=file_path.stem)
-            entries.append(entry)
         except GpgDecryptionError as e:
             logger.error(f"Failed to decrypt {file_path}: {e}")
             failed_count += 1
+            continue
         except Exception as e:
-            logger.error(f"Error processing {file_path}: {e}")
+            logger.error(f"Error while decrypting {file_path}: {e}")
             failed_count += 1
+            continue
+
+        try:
+            if "standard" in pass_format.lower():
+                entry = parse_password_file(content=content, title=file_path.stem)
+            elif "password-only" in pass_format.lower():
+                entry = parse_password_only(content=content,
+                                            filepath=file_path,
+                                            pass_directory=pass_directory)
+
+        except Exception as e:
+            logger.error(f"Error extracting contents of {file_path}: {e}")
+            failed_count += 1
+        else:
+            entries.append(entry)
 
     if failed_count > 0:
         logger.warning(f"Failed to process {failed_count} file(s)")
@@ -403,6 +462,19 @@ Examples:
         metavar="PATH",
     )
     parser.add_argument(
+        "-F",
+        "--format",
+        type=str,
+        default="standard",
+        choices = ["standard", "password-only"],
+        help="""
+        password-store file format, possible options:
+        - 'standard' see README.md
+        - 'password-only' any found password.gpg file in password-store is expected to contain the password only
+        """,
+        metavar="PASSFORMAT",
+    )
+    parser.add_argument(
         "-k",
         "--private-key",
         type=Path,
@@ -434,6 +506,7 @@ Examples:
             pass_directory=args.pass_directory,
             output_directory=args.output_directory,
             private_key=args.private_key,
+            pass_format=args.format
         )
 
         if count > 0:
