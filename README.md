@@ -24,6 +24,7 @@ uv run main.py
 
 - Python 3.13+
 - python-gnupg >= 0.5.5
+- tqdm >= 4.66
 - [A compatible version of the GnuPG executable](https://gnupg.readthedocs.io/en/latest/)
 
 ## Usage
