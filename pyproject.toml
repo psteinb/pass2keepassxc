@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "python-gnupg>=0.5.5",
+    "tqdm>=4.66",
 ]
 
 [project.scripts]
