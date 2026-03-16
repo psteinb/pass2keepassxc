@@ -12,6 +12,14 @@ cd pass2keepassxc
 pip install -e .
 ```
 
+or for the impatient:
+
+```bash
+git clone https://github.com/IGeraGera/pass2keepassxc.git
+cd pass2keepassxc
+uv run main.py
+```
+
 ### Requirements
 
 - Python 3.13+
@@ -33,7 +41,8 @@ pass2keepassxc --pass-directory ~/.password-store \
 ```
 Options:
   -p, --pass-directory PATH    Path to password-store directory containing .gpg files (required)
-  -o, --output-directory PATH  Path to output directory for CSV file (required)
+  -o, --output-directory PATH  Path to output directory for CSV file (required)  
+  -F, --format PASSFORMAT      password-store file format, possible options: - 'standard' see README.md - 'password-only' any found password.gpg file in password-store is expected to contain the password only
   -k, --private-key PATH       Path to GPG private key file (required)
   -v, --verbose                Enable verbose output (DEBUG level)
   --version                    Show version and exit
@@ -42,7 +51,7 @@ Options:
 
 ## Password File Format
 
-The tool expects password files in the standard password-store format:
+The tool expects password files in the `standard` password-store format:
 
 ```
 MySecretPassword123
@@ -51,6 +60,8 @@ url: https://example.com
 Some additional notes
 More notes here
 ```
+
+Alternatively, you can also provide the CLI option `-F 'password-only'` for the `pass` native format in which the password file only contains the password in question
 
 ### Supported Field Names (case-insensitive)
 
